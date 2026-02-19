@@ -44,7 +44,7 @@ export default class DailyNotesDigestPlugin extends Plugin {
 
   // Heartbeat
   private scheduleDailyCheck(): void {
-    const everyMinutes = Math.max(5, this.settings.checkIntervalMinutes || 60);
+    const everyMinutes = Math.max(this.settings.checkIntervalMinutes || 60);
     const intervalId = window.setInterval(async () => {
       await this.processTodayIfNeeded(false);
     }, everyMinutes * 60 * 1000);
@@ -53,15 +53,33 @@ export default class DailyNotesDigestPlugin extends Plugin {
   }
 
   private async processTodayIfNeeded(force: boolean): Promise<void> {
-    const today = this.getLocalDateStamp(new Date());
+    const now = new Date();
+    const today = this.getLocalDateStamp(now);
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(now.getDate() - 1);
+    const yesterday = this.getLocalDateStamp(yesterdayDate);
 
-    // Skip if we've already processed today's note and we're not forcing it
-    if (!force && this.settings.lastProcessedDate === today) {
-      return;
+    // Have we done yesterday's notes?
+    await this.processDateIfNeeded(yesterday, force);
+
+    // Is it time to do today's notes?
+    const isAfterCutoff = now.getHours() >= 22;
+    if (force || isAfterCutoff) {
+      await this.processDateIfNeeded(today, force);
+    }
+  }
+
+  private async processDateIfNeeded(dateStamp: string, force: boolean): Promise<void> {
+    const outputPath = this.getSummaryPath(dateStamp);
+    if (!force) {
+      const summaryExists = await this.app.vault.adapter.exists(outputPath);
+      if (summaryExists) {
+        return;
+      }
     }
 
     try {
-      const dailyNotePath = this.getDailyNotePath(today);
+      const dailyNotePath = this.getDailyNotePath(dateStamp);
       const exists = await this.app.vault.adapter.exists(dailyNotePath);
 
       if (!exists) {
@@ -71,8 +89,14 @@ export default class DailyNotesDigestPlugin extends Plugin {
         return;
       }
 
-      const noteContents = await this.app.vault.adapter.read(dailyNotePath);
-      const messages = this.buildMessages(today, noteContents);
+      const noteContents = (await this.app.vault.adapter.read(dailyNotePath)).trim();
+      if (!noteContents || noteContents.length < 20) {
+        if (force) {
+          new Notice(`Daily note is empty or nearly empty: ${dailyNotePath}`);
+        }
+        return;
+      }
+      const messages = this.buildMessages(dateStamp, noteContents);
       const summary = await this.callLlm(messages);
 
       if (!summary) {
@@ -80,11 +104,10 @@ export default class DailyNotesDigestPlugin extends Plugin {
         return;
       }
 
-      const outputPath = this.getSummaryPath(today);
       await this.ensureFolderExists(this.settings.outputFolder);
       await this.app.vault.adapter.write(outputPath, summary.trim() + "\n");
 
-      this.settings.lastProcessedDate = today;
+      this.settings.lastProcessedDate = dateStamp;
       await this.saveSettings();
 
       new Notice(`Daily summary saved: ${outputPath}`);

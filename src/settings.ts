@@ -7,6 +7,7 @@ export interface DailyNotesDigestSettings {
   promptTemplate: string;
   checkIntervalMinutes: number;
   lastProcessedDate: string;
+  lastOpenedDigestDate: string;
 }
 
 export const DEFAULT_SETTINGS: DailyNotesDigestSettings = {
@@ -18,5 +19,6 @@ export const DEFAULT_SETTINGS: DailyNotesDigestSettings = {
   promptTemplate:
     "Summarize the daily note into concise bullet points and action items.\n\nDate: {{date}}\n\nFocus on key events, decisions, blockers, and next actions.",
   checkIntervalMinutes: 60,
-  lastProcessedDate: ""
+  lastProcessedDate: "",
+  lastOpenedDigestDate: ""
 };
