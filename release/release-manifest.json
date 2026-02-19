@@ -1,0 +1,27 @@
+{
+  "id": "daily-notes-digest",
+  "version": "1.0.0",
+  "generatedAt": "2026-02-19T22:03:20.491Z",
+  "artifacts": [
+    {
+      "file": "daily-notes-digest-1.0.0.zip",
+      "path": "release/daily-notes-digest-1.0.0.zip",
+      "sha256": "79f4f567e52ae7f7617c0ee1d1f67f647f0a5a8e9e6a52c7ca2f14369ff67423"
+    },
+    {
+      "file": "main.js",
+      "path": "main.js",
+      "sha256": "b840c403d45321f7eca44818ef00f215afd7be1d49aa280cb31167560d7dc085"
+    },
+    {
+      "file": "manifest.json",
+      "path": "manifest.json",
+      "sha256": "980f350b3d19225a9fda147f1ed0bdaa3ed5079e51971c3410f8cfcf7074aebb"
+    },
+    {
+      "file": "styles.css",
+      "path": "styles.css",
+      "sha256": "4c4e441d560812f6f380f68e2198753555cb074d0d93c4acf25a14b039f1e977"
+    }
+  ]
+}

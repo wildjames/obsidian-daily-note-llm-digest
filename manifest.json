@@ -1,0 +1,9 @@
+{
+  "id": "daily-notes-digest",
+  "name": "Daily Notes Digest",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Summarize today's daily note using an LLM and save the summary file automatically.",
+  "author": "Jim Wild",
+  "isDesktopOnly": false
+}
