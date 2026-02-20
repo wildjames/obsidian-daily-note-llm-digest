@@ -27,9 +27,17 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
-            await github.rest.pulls.enableAutoMerge({
-              owner,
-              repo,
-              pull_number: context.payload.pull_request.number,
-              merge_method: "squash"
-            });
+            const pullRequestId = context.payload.pull_request.node_id;
+            await github.graphql(
+              `mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+                enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: $mergeMethod }) {
+                  pullRequest {
+                    number
+                  }
+                }
+              }`,
+              {
+                pullRequestId,
+                mergeMethod: "SQUASH"
+              }
+            );
