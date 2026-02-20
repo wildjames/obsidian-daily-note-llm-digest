@@ -2,3 +2,4 @@ node_modules/
 main.js
 *.tsbuildinfo
 release/
+manifest.json
