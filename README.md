@@ -26,7 +26,7 @@ npm run dev
 npm run build
 ```
 
-Copy `main.js`, `manifest.json`, and optionally `styles.css` into your Obsidian vault plugin folder.
+Copy `main.js`, `manifest.json`, and optionally `styles.css` into your Obsidian vault plugin folder. `manifest.json` is generated from `manifest.template.json` during release packaging.
 
 ## Release package
 

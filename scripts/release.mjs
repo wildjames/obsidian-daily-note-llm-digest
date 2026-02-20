@@ -6,15 +6,32 @@ import JSZip from "jszip";
 const root = process.cwd();
 const releaseDir = path.join(root, "release");
 
+const manifestTemplatePath = path.join(root, "manifest.template.json");
 const manifestPath = path.join(root, "manifest.json");
-const manifestRaw = await readFile(manifestPath, "utf8");
-const manifest = JSON.parse(manifestRaw);
+const packagePath = path.join(root, "package.json");
+
+const manifestTemplateRaw = await readFile(manifestTemplatePath, "utf8");
+const manifestTemplate = JSON.parse(manifestTemplateRaw);
+const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+
+const packageVersion = packageJson.version;
+if (!packageVersion) {
+  throw new Error("package.json is missing version");
+}
+
+const manifest = {
+  ...manifestTemplate,
+  version: packageVersion
+};
+
+await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 
 const pluginId = manifest.id;
 const pluginVersion = manifest.version;
+const minAppVersion = manifest.minAppVersion;
 
-if (!pluginId || !pluginVersion) {
-  throw new Error("manifest.json must contain id and version");
+if (!pluginId || !pluginVersion || !minAppVersion) {
+  throw new Error("manifest.template.json must contain id and minAppVersion");
 }
 
 const releaseFiles = ["main.js", "manifest.json", "styles.css"];
