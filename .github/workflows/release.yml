@@ -35,6 +35,7 @@ jobs:
             const { owner, repo } = context.repo;
             const sha = context.sha;
             let isDependabot = false;
+            let isMajor = false;
 
             try {
               const { data: pulls } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
@@ -45,6 +46,7 @@ jobs:
 
               if (Array.isArray(pulls) && pulls.length) {
                 isDependabot = pulls.some((pr) => pr.user?.login === "dependabot[bot]");
+                isMajor = pulls.some((pr) => pr.title?.startsWith("Major: "));
               }
             } catch (error) {
               core.warning(`Failed to look up PRs for ${sha}: ${error.message}`);
@@ -55,7 +57,14 @@ jobs:
               isDependabot = true;
             }
 
-            core.setOutput("type", isDependabot ? "patch" : "minor");
+            let releaseType = "minor";
+            if (isMajor) {
+              releaseType = "major";
+            } else if (isDependabot) {
+              releaseType = "patch";
+            }
+
+            core.setOutput("type", releaseType);
 
       - name: Compute next version
         id: next_version
