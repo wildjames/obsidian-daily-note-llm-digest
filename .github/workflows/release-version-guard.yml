@@ -1,0 +1,39 @@
+name: Release version guard
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+jobs:
+  verify-next-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Determine release type
+        id: release_type
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const isDependabot = pr?.user?.login === "dependabot[bot]";
+            core.setOutput("type", isDependabot ? "patch" : "minor");
+
+      - name: Compute next version
+        id: next_version
+        run: echo "version=$(node scripts/bump-version.mjs --type ${{ steps.release_type.outputs.type }} --dry-run)" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure version is not already released
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.next_version.outputs.version }}" >/dev/null; then
+            echo "Tag already exists for version ${{ steps.next_version.outputs.version }}"
+            exit 1
+          fi
