@@ -8,6 +8,8 @@ const createPlugin = () => {
     vault: {
       adapter: {
         exists: vi.fn(),
+        list: vi.fn(),
+        rename: vi.fn(),
         read: vi.fn(),
         write: vi.fn()
       },
@@ -26,6 +28,62 @@ const createPlugin = () => {
 describe("DailyNotesDigestPlugin helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("moves prior daily notes into yyyy/mm folders", async () => {
+    const {app, plugin} = createPlugin();
+    plugin.settings.sortDailyNotesAndSummaries = true;
+
+    app.vault.adapter.exists.mockResolvedValue(true);
+    app.vault.adapter.list.mockResolvedValue({
+      files: [
+        "daily_notes/2026-02-19.md",
+        "daily_notes/2026-02-20.md",
+        "daily_notes/notes.md"
+      ],
+      folders: []
+    });
+
+    const ensureSpy = vi
+      .spyOn(plugin as any, "ensureFolderExists")
+      .mockResolvedValue(undefined);
+
+    await (plugin as any).sortDailyNotes("2026-02-20");
+
+    expect(ensureSpy).toHaveBeenCalledWith("daily_notes/2026/02");
+    expect(app.vault.adapter.rename).toHaveBeenCalledTimes(1);
+    expect(app.vault.adapter.rename).toHaveBeenCalledWith(
+      "daily_notes/2026-02-19.md",
+      "daily_notes/2026/02/2026-02-19.md"
+    );
+  });
+
+  it("archives summaries older than yesterday", async () => {
+    const {app, plugin} = createPlugin();
+    plugin.settings.sortDailyNotesAndSummaries = true;
+
+    app.vault.adapter.exists.mockResolvedValue(true);
+    app.vault.adapter.list.mockResolvedValue({
+      files: [
+        "daily_digests/2026-02-18_summary.md",
+        "daily_digests/2026-02-19_summary.md",
+        "daily_digests/2026-02-20_summary.md"
+      ],
+      folders: []
+    });
+
+    const ensureSpy = vi
+      .spyOn(plugin as any, "ensureFolderExists")
+      .mockResolvedValue(undefined);
+
+    await (plugin as any).sortSummaries("2026-02-19");
+
+    expect(ensureSpy).toHaveBeenCalledWith("daily_digests/2026/02");
+    expect(app.vault.adapter.rename).toHaveBeenCalledTimes(1);
+    expect(app.vault.adapter.rename).toHaveBeenCalledWith(
+      "daily_digests/2026-02-18_summary.md",
+      "daily_digests/2026/02/2026-02-18_summary.md"
+    );
   });
 
   it("formats local date stamps", () => {
