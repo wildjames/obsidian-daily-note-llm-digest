@@ -114,5 +114,5 @@ jobs:
 
           gh release create "$tag" \
             --title="$tag" \
-            --draft \
+            --latest \
             main.js manifest.json styles.css release/*.zip release/release-manifest.json
