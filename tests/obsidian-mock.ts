@@ -44,6 +44,9 @@ export class Setting {
   addTextArea(): this {
     return this;
   }
+  addToggle(): this {
+    return this;
+  }
 }
 
 export class Notice {
