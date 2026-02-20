@@ -38,6 +38,20 @@ export default class DailyNotesDigestPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "sort-daily-notes-and-summaries-now",
+      name: "Sort daily notes and summaries into folders now",
+      callback: async () => {
+        const today = this.getLocalDateStamp(new Date());
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterday = this.getLocalDateStamp(yesterdayDate);
+
+        await this.sortDailyNotesAndSummaries(today, yesterday);
+        new Notice("Daily notes and summaries sorted");
+      }
+    });
+
     await this.processYesterdayIfNeeded(false);
     this.scheduleDailyCheck();
   }
@@ -52,7 +66,7 @@ export default class DailyNotesDigestPlugin extends Plugin {
 
   // Heartbeat
   private scheduleDailyCheck(): void {
-    const everyMinutes = Math.max(this.settings.checkIntervalMinutes || 60);
+    const everyMinutes = this.settings.checkIntervalMinutes || 60;
     const intervalId = window.setInterval(async () => {
       await this.processYesterdayIfNeeded(false);
     }, everyMinutes * 60 * 1000);
@@ -120,6 +134,10 @@ export default class DailyNotesDigestPlugin extends Plugin {
       const finalContent = summary.trim() + backlink;
 
       await this.ensureFolderExists(this.settings.outputFolder);
+
+      // Need to check that the directories exist before writing
+      const outputDir = outputPath.split("/").slice(0, -1).join("/");
+      await this.ensureFolderExists(outputDir)
       await this.app.vault.adapter.write(outputPath, finalContent.trim() + "\n");
 
       this.settings.lastProcessedDate = dateStamp;
@@ -417,7 +435,7 @@ class DailyNotesDigestSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Summary prompt template")
       .setDesc(
-        "Use {{date}}. {{note}} is optional for legacy templates and replaced with guidance because note content is sent separately."
+        "Use {{date}} to include the date in the prompt. The daily note content will be appended to this template as a separate message when sent to the LLM."
       )
       .addTextArea((text) =>
         text
