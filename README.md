@@ -13,6 +13,8 @@ This plugin checks once per day for a daily note named `yyyy-mm-dd.md` in a conf
 
 ## Development
 
+By default, dependabot creates patch releases, and devs create minor releases. If you want to create a major release, prepend your PR with the string `Major: `.
+
 ```bash
 npm install
 npm run dev
