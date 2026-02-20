@@ -26,11 +26,19 @@ export default class DailyNotesDigestPlugin extends Plugin {
       id: "generate-today-digest-now",
       name: "Generate today's digest now",
       callback: async () => {
-        await this.processTodayIfNeeded(true);
+        await this.processToday(true);
       }
     });
 
-    await this.processTodayIfNeeded(false);
+    this.addCommand({
+      id: "generate-yesterday-digest-now",
+      name: "Generate yesterday's digest now",
+      callback: async () => {
+        await this.processYesterdayIfNeeded(true);
+      }
+    });
+
+    await this.processYesterdayIfNeeded(false);
     this.scheduleDailyCheck();
   }
 
@@ -46,27 +54,25 @@ export default class DailyNotesDigestPlugin extends Plugin {
   private scheduleDailyCheck(): void {
     const everyMinutes = Math.max(this.settings.checkIntervalMinutes || 60);
     const intervalId = window.setInterval(async () => {
-      await this.processTodayIfNeeded(false);
+      await this.processYesterdayIfNeeded(false);
     }, everyMinutes * 60 * 1000);
 
     this.registerInterval(intervalId);
   }
 
-  private async processTodayIfNeeded(force: boolean): Promise<void> {
+  private async processToday(force: boolean): Promise<void> {
+    const today = this.getLocalDateStamp(new Date());
+    await this.processDateIfNeeded(today, force);
+  }
+
+  private async processYesterdayIfNeeded(force: boolean): Promise<void> {
     const now = new Date();
-    const today = this.getLocalDateStamp(now);
     const yesterdayDate = new Date(now);
     yesterdayDate.setDate(now.getDate() - 1);
     const yesterday = this.getLocalDateStamp(yesterdayDate);
 
     // Have we done yesterday's notes?
     await this.processDateIfNeeded(yesterday, force);
-
-    // Is it time to do today's notes?
-    const isAfterCutoff = now.getHours() >= 22;
-    if (force || isAfterCutoff) {
-      await this.processDateIfNeeded(today, force);
-    }
   }
 
   private async processDateIfNeeded(dateStamp: string, force: boolean): Promise<void> {
@@ -104,8 +110,12 @@ export default class DailyNotesDigestPlugin extends Plugin {
         return;
       }
 
+      // Append the summary with a backlink to the original note
+      const backlink = `\n\n---\n\n[Original note](${dateStamp})`;
+      const finalContent = summary.trim() + backlink;
+
       await this.ensureFolderExists(this.settings.outputFolder);
-      await this.app.vault.adapter.write(outputPath, summary.trim() + "\n");
+      await this.app.vault.adapter.write(outputPath, finalContent.trim() + "\n");
 
       this.settings.lastProcessedDate = dateStamp;
       await this.saveSettings();
