@@ -42,10 +42,7 @@ export default class DailyNotesDigestPlugin extends Plugin {
       id: "sort-daily-notes-and-summaries-now",
       name: "Sort daily notes and summaries into folders now",
       callback: async () => {
-        const today = this.getLocalDateStamp(new Date());
-        const yesterdayDate = new Date();
-        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        const yesterday = this.getLocalDateStamp(yesterdayDate);
+        const {today, yesterday} = this.getTodayAndYesterdayStamps();
 
         await this.sortDailyNotesAndSummaries(today, yesterday);
         new Notice("Daily notes and summaries sorted");
@@ -75,16 +72,16 @@ export default class DailyNotesDigestPlugin extends Plugin {
   }
 
   private async processToday(force: boolean): Promise<void> {
-    const today = this.getLocalDateStamp(new Date());
+    const today = this.getTodayStamp();
     await this.processDateIfNeeded(today, force);
   }
 
   private async processYesterdayIfNeeded(force: boolean): Promise<void> {
-    const now = new Date();
-    const today = this.getLocalDateStamp(now);
-    const yesterdayDate = new Date(now);
-    yesterdayDate.setDate(now.getDate() - 1);
-    const yesterday = this.getLocalDateStamp(yesterdayDate);
+    const {today, yesterday} = this.getTodayAndYesterdayStamps();
+
+    if (this.settings.sortDailyNotesAndSummaries) {
+      await this.sortDailyNotesAndSummaries(today, yesterday);
+    }
 
     if (this.settings.sortDailyNotesAndSummaries) {
       await this.sortDailyNotesAndSummaries(today, yesterday);
@@ -133,11 +130,8 @@ export default class DailyNotesDigestPlugin extends Plugin {
       const backlink = `\n\n---\n\n[Original note](${dateStamp})`;
       const finalContent = summary.trim() + backlink;
 
-      await this.ensureFolderExists(this.settings.outputFolder);
-
       // Need to check that the directories exist before writing
-      const outputDir = outputPath.split("/").slice(0, -1).join("/");
-      await this.ensureFolderExists(outputDir)
+      await this.ensureParentFolderExists(outputPath);
       await this.app.vault.adapter.write(outputPath, finalContent.trim() + "\n");
 
       this.settings.lastProcessedDate = dateStamp;
@@ -152,29 +146,43 @@ export default class DailyNotesDigestPlugin extends Plugin {
   }
 
   private getDailyNotePath(dateStamp: string): string {
-    const today = this.getLocalDateStamp(new Date());
+    const today = this.getTodayStamp();
     if (this.settings.sortDailyNotesAndSummaries && dateStamp !== today) {
-      const {year, month} = this.getDateParts(dateStamp);
-      return normalizePath(
-        `${this.settings.dailyNotesFolder}/${year}/${month}/${dateStamp}.md`
+      return this.buildDatedPath(
+        this.settings.dailyNotesFolder,
+        dateStamp,
+        ".md",
+        true
       );
     }
 
-    return normalizePath(`${this.settings.dailyNotesFolder}/${dateStamp}.md`);
+    return this.buildDatedPath(
+      this.settings.dailyNotesFolder,
+      dateStamp,
+      ".md",
+      false
+    );
   }
 
   private getSummaryPath(dateStamp: string): string {
     if (this.settings.sortDailyNotesAndSummaries) {
       const yesterday = this.getYesterdayStamp();
       if (this.isDateStampBefore(dateStamp, yesterday)) {
-        const {year, month} = this.getDateParts(dateStamp);
-        return normalizePath(
-          `${this.settings.outputFolder}/${year}/${month}/${dateStamp}_summary.md`
+        return this.buildDatedPath(
+          this.settings.outputFolder,
+          dateStamp,
+          "_summary.md",
+          true
         );
       }
     }
 
-    return normalizePath(`${this.settings.outputFolder}/${dateStamp}_summary.md`);
+    return this.buildDatedPath(
+      this.settings.outputFolder,
+      dateStamp,
+      "_summary.md",
+      false
+    );
   }
 
   private buildMessages(dateStamp: string, note: string): ChatMessage[] {
@@ -249,6 +257,15 @@ export default class DailyNotesDigestPlugin extends Plugin {
     }
   }
 
+  private async ensureParentFolderExists(filePath: string): Promise<void> {
+    const parentPath = normalizePath(filePath.split("/").slice(0, -1).join("/"));
+    if (!parentPath || parentPath === ".") {
+      return;
+    }
+
+    await this.ensureFolderExists(parentPath);
+  }
+
   private getLocalDateStamp(date: Date): string {
     const year = date.getFullYear();
     const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -257,15 +274,45 @@ export default class DailyNotesDigestPlugin extends Plugin {
   }
 
   private getYesterdayStamp(): string {
+    return this.getRelativeDateStamp(-1);
+  }
+
+  private getTodayStamp(): string {
+    return this.getLocalDateStamp(new Date());
+  }
+
+  private getRelativeDateStamp(offsetDays: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() + offsetDays);
+    return this.getLocalDateStamp(date);
+  }
+
+  private getTodayAndYesterdayStamps(): {today: string; yesterday: string} {
     const now = new Date();
+    const today = this.getLocalDateStamp(now);
     const yesterdayDate = new Date(now);
     yesterdayDate.setDate(now.getDate() - 1);
-    return this.getLocalDateStamp(yesterdayDate);
+    const yesterday = this.getLocalDateStamp(yesterdayDate);
+    return {today, yesterday};
   }
 
   private getDateParts(dateStamp: string): {year: string; month: string} {
     const [year, month] = dateStamp.split("-");
     return {year, month};
+  }
+
+  private buildDatedPath(
+    baseFolder: string,
+    dateStamp: string,
+    suffix: string,
+    nestByMonth: boolean
+  ): string {
+    if (nestByMonth) {
+      const {year, month} = this.getDateParts(dateStamp);
+      return normalizePath(`${baseFolder}/${year}/${month}/${dateStamp}${suffix}`);
+    }
+
+    return normalizePath(`${baseFolder}/${dateStamp}${suffix}`);
   }
 
   private isDateStampBefore(a: string, b: string): boolean {
@@ -281,39 +328,32 @@ export default class DailyNotesDigestPlugin extends Plugin {
   }
 
   private async sortDailyNotes(todayStamp: string): Promise<void> {
-    const baseFolder = normalizePath(this.settings.dailyNotesFolder);
-    if (!baseFolder || baseFolder === ".") {
-      return;
-    }
-
-    const baseExists = await this.app.vault.adapter.exists(baseFolder);
-    if (!baseExists) {
-      return;
-    }
-
-    const listing = await this.app.vault.adapter.list(baseFolder);
-    for (const filePath of listing.files) {
-      const name = filePath.split("/").pop() ?? "";
-      const dateStamp = this.getDailyNoteDateStamp(name);
-      if (!dateStamp || dateStamp === todayStamp) {
-        continue;
-      }
-
-      const {year, month} = this.getDateParts(dateStamp);
-      const targetPath = normalizePath(
-        `${baseFolder}/${year}/${month}/${dateStamp}.md`
-      );
-      if (filePath === targetPath) {
-        continue;
-      }
-
-      await this.ensureFolderExists(`${baseFolder}/${year}/${month}`);
-      await this.app.vault.adapter.rename(filePath, targetPath);
-    }
+    await this.sortDatedFiles({
+      baseFolder: this.settings.dailyNotesFolder,
+      extractDateStamp: (filename) => this.getDailyNoteDateStamp(filename),
+      shouldMove: (dateStamp) => dateStamp !== todayStamp,
+      buildTargetPath: (dateStamp, baseFolder) =>
+        this.buildDatedPath(baseFolder, dateStamp, ".md", true)
+    });
   }
 
   private async sortSummaries(yesterdayStamp: string): Promise<void> {
-    const baseFolder = normalizePath(this.settings.outputFolder);
+    await this.sortDatedFiles({
+      baseFolder: this.settings.outputFolder,
+      extractDateStamp: (filename) => this.getSummaryDateStamp(filename),
+      shouldMove: (dateStamp) => this.isDateStampBefore(dateStamp, yesterdayStamp),
+      buildTargetPath: (dateStamp, baseFolder) =>
+        this.buildDatedPath(baseFolder, dateStamp, "_summary.md", true)
+    });
+  }
+
+  private async sortDatedFiles(options: {
+    baseFolder: string;
+    extractDateStamp: (filename: string) => string | null;
+    shouldMove: (dateStamp: string) => boolean;
+    buildTargetPath: (dateStamp: string, baseFolder: string) => string;
+  }): Promise<void> {
+    const baseFolder = normalizePath(options.baseFolder);
     if (!baseFolder || baseFolder === ".") {
       return;
     }
@@ -326,31 +366,49 @@ export default class DailyNotesDigestPlugin extends Plugin {
     const listing = await this.app.vault.adapter.list(baseFolder);
     for (const filePath of listing.files) {
       const name = filePath.split("/").pop() ?? "";
-      const dateStamp = this.getSummaryDateStamp(name);
-      if (!dateStamp || !this.isDateStampBefore(dateStamp, yesterdayStamp)) {
+      const dateStamp = options.extractDateStamp(name);
+      if (!dateStamp || !options.shouldMove(dateStamp)) {
         continue;
       }
 
-      const {year, month} = this.getDateParts(dateStamp);
-      const targetPath = normalizePath(
-        `${baseFolder}/${year}/${month}/${dateStamp}_summary.md`
-      );
+      const targetPath = options.buildTargetPath(dateStamp, baseFolder);
       if (filePath === targetPath) {
         continue;
       }
 
-      await this.ensureFolderExists(`${baseFolder}/${year}/${month}`);
-      await this.app.vault.adapter.rename(filePath, targetPath);
+      const targetDir = targetPath.split("/").slice(0, -1).join("/");
+      await this.ensureFolderExists(targetDir);
+      await this.renameOrRemoveIfTargetExists(filePath, targetPath);
+    }
+  }
+
+  private async renameOrRemoveIfTargetExists(
+    sourcePath: string,
+    targetPath: string
+  ): Promise<void> {
+    try {
+      await this.app.vault.adapter.rename(sourcePath, targetPath);
+    } catch (error) {
+      const targetExists = await this.app.vault.adapter.exists(targetPath);
+      if (targetExists) {
+        await this.app.vault.adapter.remove(sourcePath);
+        return;
+      }
+      throw error;
     }
   }
 
   private getDailyNoteDateStamp(filename: string): string | null {
-    const match = filename.match(/^(\d{4}-\d{2}-\d{2})\.md$/);
-    return match ? match[1] : null;
+    return this.extractDateStamp(filename, "\\.md");
   }
 
   private getSummaryDateStamp(filename: string): string | null {
-    const match = filename.match(/^(\d{4}-\d{2}-\d{2})_summary\.md$/);
+    return this.extractDateStamp(filename, "_summary\\.md");
+  }
+
+  private extractDateStamp(filename: string, suffixPattern: string): string | null {
+    const regex = new RegExp(`^(\\d{4}-\\d{2}-\\d{2})${suffixPattern}$`);
+    const match = filename.match(regex);
     return match ? match[1] : null;
   }
 }
@@ -367,97 +425,107 @@ class DailyNotesDigestSettingTab extends PluginSettingTab {
     const {containerEl} = this;
     containerEl.empty();
 
+    this.addTextSetting(containerEl, {
+      name: "Daily notes folder",
+      desc: "Folder containing daily notes named yyyy-mm-dd.md",
+      placeholder: "Daily",
+      value: this.plugin.settings.dailyNotesFolder,
+      onChange: (value) => {
+        this.plugin.settings.dailyNotesFolder = value.trim() || "Daily";
+      }
+    });
+
+    this.addTextSetting(containerEl, {
+      name: "Summary output folder",
+      desc: "Folder where yyyy-mm-dd_summary.md files are written",
+      placeholder: "Daily Summaries",
+      value: this.plugin.settings.outputFolder,
+      onChange: (value) => {
+        this.plugin.settings.outputFolder = value.trim() || "Daily Summaries";
+      }
+    });
+
+    this.addTextSetting(containerEl, {
+      name: "LLM endpoint",
+      desc: "OpenAI-compatible chat completions endpoint",
+      placeholder: "https://api.openai.com/v1/chat/completions",
+      value: this.plugin.settings.llmEndpoint,
+      onChange: (value) => {
+        this.plugin.settings.llmEndpoint = value.trim();
+      }
+    });
+
+    this.addTextSetting(containerEl, {
+      name: "API key",
+      desc: "Authorization key for your LLM provider",
+      placeholder: "sk-...",
+      value: this.plugin.settings.apiKey,
+      onChange: (value) => {
+        this.plugin.settings.apiKey = value.trim();
+      }
+    });
+
+    this.addTextSetting(containerEl, {
+      name: "Model",
+      desc: "Model name sent in the request body",
+      placeholder: "gpt-4o-mini",
+      value: this.plugin.settings.model,
+      onChange: (value) => {
+        this.plugin.settings.model = value.trim() || "gpt-4o-mini";
+      }
+    });
+
+    this.addTextAreaSetting(containerEl, {
+      name: "Summary prompt template",
+      desc: "Use {{date}} to include the date in the prompt. The daily note content will be appended to this template as a separate message when sent to the LLM.",
+      value: this.plugin.settings.promptTemplate,
+      onChange: (value) => {
+        this.plugin.settings.promptTemplate = value;
+      }
+    });
+
+    this.addTextSetting(containerEl, {
+      name: "Check interval (minutes)",
+      desc: "Interval (in minutes) for automatic digest generation and file sorting checks",
+      placeholder: "60",
+      value: String(this.plugin.settings.checkIntervalMinutes),
+      onChange: (value) => {
+        const parsed = Number.parseInt(value, 10);
+        this.plugin.settings.checkIntervalMinutes = Number.isFinite(parsed)
+          ? Math.max(5, parsed)
+          : 60;
+      }
+    });
+
+    this.addToggleSetting(containerEl, {
+      name: "Sort daily notes and summaries",
+      desc: "Organize daily notes (except today) and summaries (before yesterday) into yyyy/mm folders.",
+      value: this.plugin.settings.sortDailyNotesAndSummaries,
+      onChange: (value) => {
+        this.plugin.settings.sortDailyNotesAndSummaries = value;
+      }
+    });
+  }
+
+  private addTextSetting(
+    containerEl: HTMLElement,
+    options: {
+      name: string;
+      desc: string;
+      placeholder: string;
+      value: string;
+      onChange: (value: string) => void;
+    }
+  ): void {
     new Setting(containerEl)
-      .setName("Daily notes folder")
-      .setDesc("Folder containing daily notes named yyyy-mm-dd.md")
+      .setName(options.name)
+      .setDesc(options.desc)
       .addText((text) =>
         text
-          .setPlaceholder("Daily")
-          .setValue(this.plugin.settings.dailyNotesFolder)
+          .setPlaceholder(options.placeholder)
+          .setValue(options.value)
           .onChange(async (value) => {
-            this.plugin.settings.dailyNotesFolder = value.trim() || "Daily";
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Summary output folder")
-      .setDesc("Folder where yyyy-mm-dd_summary.md files are written")
-      .addText((text) =>
-        text
-          .setPlaceholder("Daily Summaries")
-          .setValue(this.plugin.settings.outputFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.outputFolder = value.trim() || "Daily Summaries";
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("LLM endpoint")
-      .setDesc("OpenAI-compatible chat completions endpoint")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://api.openai.com/v1/chat/completions")
-          .setValue(this.plugin.settings.llmEndpoint)
-          .onChange(async (value) => {
-            this.plugin.settings.llmEndpoint = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("API key")
-      .setDesc("Authorization key for your LLM provider")
-      .addText((text) =>
-        text
-          .setPlaceholder("sk-...")
-          .setValue(this.plugin.settings.apiKey)
-          .onChange(async (value) => {
-            this.plugin.settings.apiKey = value.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Model")
-      .setDesc("Model name sent in the request body")
-      .addText((text) =>
-        text
-          .setPlaceholder("gpt-4o-mini")
-          .setValue(this.plugin.settings.model)
-          .onChange(async (value) => {
-            this.plugin.settings.model = value.trim() || "gpt-4o-mini";
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Summary prompt template")
-      .setDesc(
-        "Use {{date}} to include the date in the prompt. The daily note content will be appended to this template as a separate message when sent to the LLM."
-      )
-      .addTextArea((text) =>
-        text
-          .setValue(this.plugin.settings.promptTemplate)
-          .onChange(async (value) => {
-            this.plugin.settings.promptTemplate = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Check interval (minutes)")
-      .setDesc("Plugin checks periodically and only processes once per day")
-      .addText((text) =>
-        text
-          .setPlaceholder("60")
-          .setValue(String(this.plugin.settings.checkIntervalMinutes))
-          .onChange(async (value) => {
-            const parsed = Number.parseInt(value, 10);
-            this.plugin.settings.checkIntervalMinutes = Number.isFinite(parsed)
-              ? Math.max(5, parsed)
-              : 60;
+            options.onChange(value);
             await this.plugin.saveSettings();
           })
       );
@@ -474,6 +542,46 @@ class DailyNotesDigestSettingTab extends PluginSettingTab {
             this.plugin.settings.sortDailyNotesAndSummaries = value;
             await this.plugin.saveSettings();
           })
+      );
+  }
+
+  private addTextAreaSetting(
+    containerEl: HTMLElement,
+    options: {
+      name: string;
+      desc: string;
+      value: string;
+      onChange: (value: string) => void;
+    }
+  ): void {
+    new Setting(containerEl)
+      .setName(options.name)
+      .setDesc(options.desc)
+      .addTextArea((text) =>
+        text.setValue(options.value).onChange(async (value) => {
+          options.onChange(value);
+          await this.plugin.saveSettings();
+        })
+      );
+  }
+
+  private addToggleSetting(
+    containerEl: HTMLElement,
+    options: {
+      name: string;
+      desc: string;
+      value: boolean;
+      onChange: (value: boolean) => void;
+    }
+  ): void {
+    new Setting(containerEl)
+      .setName(options.name)
+      .setDesc(options.desc)
+      .addToggle((toggle) =>
+        toggle.setValue(options.value).onChange(async (value) => {
+          options.onChange(value);
+          await this.plugin.saveSettings();
+        })
       );
   }
 }
