@@ -83,6 +83,10 @@ export default class DailyNotesDigestPlugin extends Plugin {
       await this.sortDailyNotesAndSummaries(today, yesterday);
     }
 
+    if (this.settings.sortDailyNotesAndSummaries) {
+      await this.sortDailyNotesAndSummaries(today, yesterday);
+    }
+
     // Have we done yesterday's notes?
     await this.processDateIfNeeded(yesterday, force);
   }
@@ -522,6 +526,20 @@ class DailyNotesDigestSettingTab extends PluginSettingTab {
           .setValue(options.value)
           .onChange(async (value) => {
             options.onChange(value);
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Sort daily notes and summaries")
+      .setDesc(
+        "Move older daily notes into yyyy/mm folders and archive summaries older than yesterday."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.sortDailyNotesAndSummaries)
+          .onChange(async (value) => {
+            this.plugin.settings.sortDailyNotesAndSummaries = value;
             await this.plugin.saveSettings();
           })
       );
