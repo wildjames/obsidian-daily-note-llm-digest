@@ -98,7 +98,7 @@ jobs:
         run: npm run release
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: daily-notes-digest-${{ steps.next_version.outputs.version }}
           if-no-files-found: error
